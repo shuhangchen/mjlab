@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import contextlib
+import os
 import shutil
 import xml.etree.ElementTree as ET
 import zipfile
@@ -12,7 +14,7 @@ import mujoco
 import numpy as np
 
 from mjlab.actuator.actuator import TransmissionType
-from mjlab.utils.xml import fix_spec_xml, strip_buffer_textures
+from mjlab.utils.xml import externalize_buffer_textures, fix_spec_xml
 
 _DEFAULT_SPEC_OPTION = mujoco.MjSpec().option
 
@@ -49,6 +51,16 @@ _OPTION_FIELDS = (
 )
 
 
+@contextlib.contextmanager
+def _working_directory(path: Path):
+  old_cwd = Path.cwd()
+  os.chdir(path)
+  try:
+    yield
+  finally:
+    os.chdir(old_cwd)
+
+
 def non_default_option_fields(opt: mujoco._specs.MjOption) -> list[str]:
   """Return option field names that differ from MjSpec defaults."""
   diffs = []
@@ -78,9 +90,12 @@ def export_spec(
   Operates on a copy of spec to avoid mutation.
   """
   output_dir.mkdir(parents=True, exist_ok=True)
+  output_dir = output_dir.resolve()
+  assets_dir = output_dir / "assets"
   tmp = spec.copy()
-  strip_buffer_textures(tmp)
-  xml = fix_spec_xml(tmp.to_xml(), meshdir="assets")
+  externalize_buffer_textures(tmp, assets_dir)
+  with _working_directory(output_dir):
+    xml = fix_spec_xml(tmp.to_xml(), meshdir="assets")
   (output_dir / "scene.xml").write_text(xml)
 
   # Collect file paths referenced in the XML.
@@ -94,8 +109,9 @@ def export_spec(
   # Write only referenced assets. Match asset keys to XML file attributes by path
   # suffix because keys may carry the original meshdir prefix (e.g.
   # "../../meshes/robot/arm.stl" for a file attribute of "robot/arm.stl").
-  assets_dir = output_dir / "assets"
   for ref_path in sorted(referenced):
+    if (output_dir / ref_path).exists():
+      continue
     for key, data in tmp.assets.items():
       norm = key.replace("\\", "/")
       if norm == ref_path or norm.endswith("/" + ref_path):

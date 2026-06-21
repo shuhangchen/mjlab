@@ -1,11 +1,28 @@
 """Tests for mjlab.utils.xml."""
 
+import contextlib
+import os
 import zipfile
+from pathlib import Path
 
 import mujoco
 import numpy as np
 
-from mjlab.utils.xml import fix_spec_xml, strip_buffer_textures
+from mjlab.utils.xml import (
+  externalize_buffer_textures,
+  fix_spec_xml,
+  strip_buffer_textures,
+)
+
+
+@contextlib.contextmanager
+def _working_directory(path: Path):
+  old_cwd = Path.cwd()
+  os.chdir(path)
+  try:
+    yield
+  finally:
+    os.chdir(old_cwd)
 
 
 def test_strip_buffer_textures():
@@ -41,6 +58,42 @@ def test_strip_buffer_textures():
   # XML roundtrip should succeed now.
   model = mujoco.MjModel.from_xml_string(spec.to_xml())
   assert model.nhfield == 1
+
+
+def test_externalize_buffer_textures(tmp_path):
+  """Buffer textures are exported as PNG files and remain XML-loadable."""
+  spec = mujoco.MjSpec()
+  body = spec.worldbody.add_body(name="terrain")
+
+  tex = spec.add_texture(
+    name="hf/tex",
+    type=mujoco.mjtTexture.mjTEXTURE_2D,
+    width=2,
+    height=2,
+  )
+  tex.data = np.array(
+    [
+      [[255, 0, 0], [0, 255, 0]],
+      [[0, 0, 255], [255, 255, 255]],
+    ],
+    dtype=np.uint8,
+  ).tobytes()
+
+  mat = spec.add_material(name="hf_mat")
+  mat.textures[mujoco.mjtTextureRole.mjTEXROLE_RGB] = "hf/tex"
+  body.add_geom(type=mujoco.mjtGeom.mjGEOM_BOX, size=[1, 1, 0.1], material="hf_mat")
+
+  externalize_buffer_textures(spec, tmp_path / "assets")
+
+  assert len(tex.data) == 0
+  assert tex.file == "assets/hf_tex.png"
+  assert (tmp_path / tex.file).exists()
+  assert spec.geoms[0].material == "hf_mat"
+
+  with _working_directory(tmp_path):
+    model = mujoco.MjModel.from_xml_string(spec.to_xml())
+  assert model.ntex == 1
+  assert model.nmat == 1
 
 
 def test_fix_spec_xml():
@@ -92,6 +145,50 @@ def test_rough_terrain_write_xml_roundtrip(tmp_path):
 
   model = mujoco.MjModel.from_xml_path(str(xml_path))
   assert model.nhfield == 1
+
+
+def test_scene_write_externalizes_hfield_textures(tmp_path):
+  """Scene.write preserves generated hfield materials via PNG texture assets."""
+  from mjlab.scene.scene import Scene, SceneCfg
+  from mjlab.terrains import TerrainEntityCfg
+  from mjlab.terrains.heightfield_terrains import HfRandomUniformTerrainCfg
+  from mjlab.terrains.terrain_generator import TerrainGeneratorCfg
+
+  scene = Scene(
+    SceneCfg(
+      terrain=TerrainEntityCfg(
+        terrain_type="generator",
+        terrain_generator=TerrainGeneratorCfg(
+          seed=0,
+          size=(2.0, 2.0),
+          num_rows=1,
+          num_cols=1,
+          sub_terrains={
+            "rough": HfRandomUniformTerrainCfg(
+              proportion=1.0,
+              noise_range=(-0.05, 0.05),
+              noise_step=0.005,
+            ),
+          },
+        ),
+      ),
+    ),
+    device="cpu",
+  )
+
+  out = tmp_path / "rough_scene"
+  scene.write(out)
+
+  xml = (out / "scene.xml").read_text()
+  texture_files = sorted((out / "assets").glob("*.png"))
+  assert texture_files
+  assert 'file="assets/' in xml
+  assert 'material="hf_material_' in xml
+
+  model = mujoco.MjModel.from_xml_path(str(out / "scene.xml"))
+  assert model.nhfield == 1
+  assert model.ntex >= 1
+  assert model.nmat >= 1
 
 
 def test_scene_write_zip(tmp_path):

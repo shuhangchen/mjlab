@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import re
 import xml.etree.ElementTree as ET
+from pathlib import Path
 
 import mujoco
+import numpy as np
 
 
 def strip_buffer_textures(spec: mujoco.MjSpec) -> None:
@@ -18,20 +21,65 @@ def strip_buffer_textures(spec: mujoco.MjSpec) -> None:
   for tex in list(spec.textures):
     if len(tex.data) > 0:
       buffer_names.add(tex.name)
-      spec.delete(tex)
   if not buffer_names:
     return
+
   mat_names: set[str] = set()
   for mat in list(spec.materials):
     tex_name = mat.textures[mujoco.mjtTextureRole.mjTEXROLE_RGB]
     if tex_name in buffer_names:
       mat_names.add(mat.name)
-      spec.delete(mat)
-  if not mat_names:
-    return
+
   for geom in spec.geoms:
     if geom.material in mat_names:
       geom.material = ""
+
+  for mat in list(spec.materials):
+    if mat.name in mat_names:
+      spec.delete(mat)
+  for tex in list(spec.textures):
+    if tex.name in buffer_names:
+      spec.delete(tex)
+
+
+def externalize_buffer_textures(
+  spec: mujoco.MjSpec,
+  assets_dir: Path,
+  *,
+  xml_dir: str = "assets",
+) -> None:
+  """Write buffer-backed textures to PNG assets and update texture file refs."""
+  import mediapy as media
+
+  assets_dir.mkdir(parents=True, exist_ok=True)
+  used_names: set[str] = set()
+
+  for index, tex in enumerate(list(spec.textures)):
+    if len(tex.data) == 0:
+      continue
+
+    nchannel = int(tex.nchannel)
+    if nchannel not in (1, 3, 4):
+      raise ValueError(f"Unsupported texture channel count: {nchannel}")
+
+    name = re.sub(r"[^A-Za-z0-9_.-]+", "_", tex.name).strip("._")
+    name = name or f"texture_{index}"
+    filename = f"{name}.png"
+    suffix = 1
+    while filename in used_names:
+      filename = f"{name}_{suffix}.png"
+      suffix += 1
+    used_names.add(filename)
+
+    image = np.frombuffer(tex.data, dtype=np.uint8).reshape(
+      int(tex.height), int(tex.width), nchannel
+    )
+    if nchannel == 1:
+      image = image[:, :, 0]
+
+    media.write_image(assets_dir / filename, image)
+    tex.file = f"{xml_dir}/{filename}"
+    tex.data = b""
 
 
 def _collapse_defaults(elem: ET.Element) -> None:
