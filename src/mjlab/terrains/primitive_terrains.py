@@ -30,11 +30,11 @@ _MUJOCO_BLUE = (0.20, 0.45, 0.95)
 _MUJOCO_RED = (0.90, 0.30, 0.30)
 _MUJOCO_GREEN = (0.25, 0.80, 0.45)
 
-# Minimum vertical extent of a flat border frame, in meters. The border top sits
-# flush at z=0 and extends downward, so this depth is not visible from above; it
-# only guarantees the frame is solid (never a degenerate zero-height geom) when
-# the step height collapses to zero at difficulty 0.
-_MIN_BORDER_HEIGHT = 0.05
+# Minimum vertical collision extent for stair terrain boxes, in meters. Thin
+# low-difficulty boxes are extended downward so the walking surface stays fixed
+# while the collision solid remains deep enough for robust contact.
+_MIN_TERRAIN_COLLISION_THICKNESS = 0.10
+_MIN_BORDER_HEIGHT = _MIN_TERRAIN_COLLISION_THICKNESS
 
 
 @dataclass(kw_only=True)
@@ -64,6 +64,10 @@ class BoxPyramidStairsTerrainCfg(SubTerrainCfg):
   """Depth (run) of each step, in meters."""
   platform_width: float = 1.0
   """Side length of the flat square platform at the top of the staircase, in meters."""
+  min_collision_thickness: float = _MIN_TERRAIN_COLLISION_THICKNESS
+  """Minimum vertical collision thickness for stair boxes, in meters. Thin
+  low-difficulty steps are extended downward so the walking surface height is
+  unchanged while contacts remain robust."""
   holes: bool = False
   """If True, steps form a cross pattern with empty gaps in the corners."""
 
@@ -99,7 +103,7 @@ class BoxPyramidStairsTerrainCfg(SubTerrainCfg):
       # (step_height == 0) still produces a solid, gap-free frame instead of
       # being skipped or generating degenerate zero-height geoms. The top stays
       # flush with the ground at z=0.
-      border_height = max(step_height, _MIN_BORDER_HEIGHT)
+      border_height = max(step_height, self.min_collision_thickness)
       border_center = (0.5 * self.size[0], 0.5 * self.size[1], -border_height / 2)
       border_inner_size = (
         self.size[0] - 2 * self.border_width,
@@ -131,11 +135,13 @@ class BoxPyramidStairsTerrainCfg(SubTerrainCfg):
           terrain_size[0] - 2 * k * self.step_width,
           terrain_size[1] - 2 * k * self.step_width,
         )
-      box_z = terrain_center[2] + k * step_height / 2.0
+      box_top = terrain_center[2] + (k + 1) * step_height
       box_offset = (k + 0.5) * self.step_width
       box_height = (k + 2) * step_height
+      collision_height = max(box_height, self.min_collision_thickness)
+      box_z = box_top - collision_height / 2.0
 
-      box_dims = (box_size[0], self.step_width, box_height)
+      box_dims = (box_size[0], self.step_width, collision_height)
 
       safe_size = (
         np.maximum(1e-6, box_dims[0] / 2.0),
@@ -170,12 +176,12 @@ class BoxPyramidStairsTerrainCfg(SubTerrainCfg):
       boxes.append(box)
 
       if self.holes:
-        box_dims = (self.step_width, box_size[1], box_height)
+        box_dims = (self.step_width, box_size[1], collision_height)
       else:
         box_dims = (
           self.step_width,
           box_size[1] - 2 * self.step_width,
-          box_height,
+          collision_height,
         )
       safe_size = (
         np.maximum(1e-6, box_dims[0] / 2.0),
@@ -210,15 +216,18 @@ class BoxPyramidStairsTerrainCfg(SubTerrainCfg):
       boxes.append(box)
 
     # Generate final box for the middle of the terrain.
+    box_height = (num_steps + 2) * step_height
+    collision_height = max(box_height, self.min_collision_thickness)
+    box_top = terrain_center[2] + (num_steps + 1) * step_height
     box_dims = (
       terrain_size[0] - 2 * num_steps * self.step_width,
       terrain_size[1] - 2 * num_steps * self.step_width,
-      (num_steps + 2) * step_height,
+      collision_height,
     )
     box_pos = (
       terrain_center[0],
       terrain_center[1],
-      terrain_center[2] + num_steps * step_height / 2,
+      box_top - collision_height / 2.0,
     )
     box = body.add_geom(
       type=mujoco.mjtGeom.mjGEOM_BOX,
@@ -275,7 +284,7 @@ class BoxInvertedPyramidStairsTerrainCfg(BoxPyramidStairsTerrainCfg):
     if self.border_width > 0.0 and not self.holes:
       # See BoxPyramidStairsTerrainCfg: keep the border solid and flush at z=0
       # even when step_height collapses to 0 at difficulty 0.
-      border_height = max(step_height, _MIN_BORDER_HEIGHT)
+      border_height = max(step_height, self.min_collision_thickness)
       border_center = (0.5 * self.size[0], 0.5 * self.size[1], -0.5 * border_height)
       border_inner_size = (
         self.size[0] - 2 * self.border_width,
@@ -309,11 +318,13 @@ class BoxInvertedPyramidStairsTerrainCfg(BoxPyramidStairsTerrainCfg):
           terrain_size[1] - 2 * k * self.step_width,
         )
 
-      box_z = terrain_center[2] - total_height / 2 - (k + 1) * step_height / 2.0
+      box_top = terrain_center[2] - (k + 1) * step_height
       box_offset = (k + 0.5) * self.step_width
       box_height = total_height - (k + 1) * step_height
+      collision_height = max(box_height, self.min_collision_thickness)
+      box_z = box_top - collision_height / 2.0
 
-      box_dims = (box_size[0], self.step_width, box_height)
+      box_dims = (box_size[0], self.step_width, collision_height)
       safe_size = (
         np.maximum(1e-6, box_dims[0] / 2.0),
         np.maximum(1e-6, box_dims[1] / 2.0),
@@ -347,12 +358,12 @@ class BoxInvertedPyramidStairsTerrainCfg(BoxPyramidStairsTerrainCfg):
       boxes.append(box)
 
       if self.holes:
-        box_dims = (self.step_width, box_size[1], box_height)
+        box_dims = (self.step_width, box_size[1], collision_height)
       else:
         box_dims = (
           self.step_width,
           box_size[1] - 2 * self.step_width,
-          box_height,
+          collision_height,
         )
       safe_size = (
         np.maximum(1e-6, box_dims[0] / 2.0),
@@ -387,15 +398,18 @@ class BoxInvertedPyramidStairsTerrainCfg(BoxPyramidStairsTerrainCfg):
       boxes.append(box)
 
     # Generate final box for the middle of the terrain.
+    box_height = step_height
+    collision_height = max(box_height, self.min_collision_thickness)
+    box_top = terrain_center[2] - total_height
     box_dims = (
       terrain_size[0] - 2 * num_steps * self.step_width,
       terrain_size[1] - 2 * num_steps * self.step_width,
-      step_height,
+      collision_height,
     )
     box_pos = (
       terrain_center[0],
       terrain_center[1],
-      terrain_center[2] - total_height - step_height / 2,
+      box_top - collision_height / 2.0,
     )
     box = body.add_geom(
       type=mujoco.mjtGeom.mjGEOM_BOX,

@@ -5,6 +5,14 @@ import numpy as np
 import pytest
 
 from mjlab.terrains.config import ALL_TERRAIN_PRESETS
+from mjlab.terrains.heightfield_terrains import (
+  _MIN_HFIELD_BASE_THICKNESS,
+  HfDiscreteObstaclesTerrainCfg,
+  HfPerlinNoiseTerrainCfg,
+  HfPyramidSlopedTerrainCfg,
+  HfRandomUniformTerrainCfg,
+  HfWaveTerrainCfg,
+)
 from mjlab.terrains.primitive_terrains import (
   _MIN_BORDER_HEIGHT,
   BoxInvertedPyramidStairsTerrainCfg,
@@ -99,17 +107,91 @@ def test_pyramid_stairs_border_present_at_zero_difficulty(cfg_cls):
   spec.worldbody.add_body(name="terrain")
   output = cfg.function(difficulty=0.0, spec=spec, rng=np.random.default_rng(0))
 
-  # The border frame sits below z=0 (top flush at ground level); inner step
-  # boxes are centered at z=0. Identify the frame by its downward offset.
-  border_geoms = [
-    g.geom for g in output.geometries if g.geom is not None and g.geom.pos[2] < -1e-4
-  ]
+  # The border frame is generated first and sits below z=0 with its top flush
+  # at ground level.
+  border_geoms = [g.geom for g in output.geometries[:4] if g.geom is not None]
   assert len(border_geoms) == 4, "Expected four border frame boxes."
   for geom in border_geoms:
     # Each frame box must be solid, not a degenerate zero-height geom, and its
     # top must be flush with the ground plane at z=0.
     assert geom.size[2] >= _MIN_BORDER_HEIGHT / 2 - 1e-9
     assert np.isclose(geom.pos[2] + geom.size[2], 0.0, atol=1e-6)
+
+
+@pytest.mark.parametrize(
+  "cfg_cls,inverted",
+  [
+    (BoxPyramidStairsTerrainCfg, False),
+    (BoxInvertedPyramidStairsTerrainCfg, True),
+  ],
+)
+def test_pyramid_stairs_min_collision_thickness_preserves_top_surfaces(
+  cfg_cls, inverted
+):
+  cfg = cfg_cls(
+    size=(8.0, 8.0),
+    step_height_range=(0.0, 0.2),
+    step_width=0.3,
+    platform_width=3.0,
+    border_width=1.0,
+  )
+  difficulty = 0.01
+  step_height = cfg.step_height_range[0] + difficulty * (
+    cfg.step_height_range[1] - cfg.step_height_range[0]
+  )
+  num_steps = int(
+    min(
+      (cfg.size[0] - 2 * cfg.border_width - cfg.platform_width)
+      / (2 * cfg.step_width),
+      (cfg.size[1] - 2 * cfg.border_width - cfg.platform_width)
+      / (2 * cfg.step_width),
+    )
+  )
+
+  spec = mujoco.MjSpec()
+  spec.worldbody.add_body(name="terrain")
+  output = cfg.function(difficulty=difficulty, spec=spec, rng=np.random.default_rng(0))
+
+  geoms = [g.geom for g in output.geometries if g.geom is not None]
+  assert all(
+    2 * geom.size[2] >= cfg.min_collision_thickness - 1e-9 for geom in geoms
+  )
+
+  actual_tops = sorted(geom.pos[2] + geom.size[2] for geom in geoms)
+  sign = -1.0 if inverted else 1.0
+  expected_tops = [0.0] * 4
+  expected_tops.extend(
+    sign * (k + 1) * step_height for k in range(num_steps) for _ in range(4)
+  )
+  expected_tops.append(sign * (num_steps + 1) * step_height)
+  np.testing.assert_allclose(actual_tops, sorted(expected_tops), atol=1e-9)
+
+
+@pytest.mark.parametrize(
+  "cfg",
+  [
+    HfPyramidSlopedTerrainCfg(size=(8.0, 8.0), slope_range=(0.0, 1.0)),
+    HfRandomUniformTerrainCfg(
+      size=(8.0, 8.0), noise_range=(0.02, 0.10), noise_step=0.02
+    ),
+    HfWaveTerrainCfg(size=(8.0, 8.0), amplitude_range=(0.0, 0.2), num_waves=4),
+    HfDiscreteObstaclesTerrainCfg(
+      size=(8.0, 8.0),
+      obstacle_width_range=(0.3, 1.0),
+      obstacle_height_range=(0.05, 0.3),
+      num_obstacles=4,
+    ),
+    HfPerlinNoiseTerrainCfg(size=(8.0, 8.0), height_range=(0.0, 1.0)),
+  ],
+)
+def test_hfields_have_min_base_thickness(cfg):
+  spec = mujoco.MjSpec()
+  spec.worldbody.add_body(name="terrain")
+  output = cfg.function(difficulty=0.0, spec=spec, rng=np.random.default_rng(0))
+
+  hfields = [g.hfield for g in output.geometries if g.hfield is not None]
+  assert len(hfields) == 1
+  assert hfields[0].size[3] >= _MIN_HFIELD_BASE_THICKNESS - 1e-9
 
 
 @pytest.mark.parametrize("preset_name", sorted(ALL_TERRAIN_PRESETS))

@@ -28,12 +28,25 @@ from mjlab.terrains.utils import find_flat_patches_from_heightfield
 # non-positive hfield sizes, so flat heightfields (difficulty 0) are clamped to
 # this instead of zero.
 _MIN_HFIELD_HEIGHT = 1e-3
+_MIN_HFIELD_BASE_THICKNESS = 0.10
 
 # Physical height (meters) that maps to full color saturation. Heights are
 # colored on this fixed absolute scale rather than normalized per patch, so a
 # given height reads the same color across every terrain and small-amplitude
 # terrain stays gently tinted instead of stretching into rainbow noise.
 _COLOR_SCALE = 0.75
+
+
+def _base_thickness(
+  max_physical_height: float,
+  base_thickness_ratio: float,
+  min_base_thickness: float,
+) -> float:
+  return max(
+    max_physical_height * base_thickness_ratio,
+    min_base_thickness,
+    _MIN_HFIELD_HEIGHT,
+  )
 
 
 def color_by_height(
@@ -229,6 +242,10 @@ class HfPyramidSlopedTerrainCfg(SubTerrainCfg):
   """Heightfield height resolution, in meters per integer unit of the noise array."""
   base_thickness_ratio: float = 1.0
   """Ratio of the heightfield base thickness to its maximum surface height."""
+  min_base_thickness: float = _MIN_HFIELD_BASE_THICKNESS
+  """Minimum heightfield base thickness in meters. The visible surface is
+  unchanged; only the solid base below the surface is thickened for robust
+  contact."""
 
   def function(
     self, difficulty: float, spec: mujoco.MjSpec, rng: np.random.Generator
@@ -322,7 +339,9 @@ class HfPyramidSlopedTerrainCfg(SubTerrainCfg):
     )
 
     max_physical_height = elevation_range * self.vertical_scale
-    base_thickness = max_physical_height * self.base_thickness_ratio
+    base_thickness = _base_thickness(
+      max_physical_height, self.base_thickness_ratio, self.min_base_thickness
+    )
 
     if elevation_range > 0:
       normalized_elevation = (noise - elevation_min) / elevation_range
@@ -398,6 +417,10 @@ class HfRandomUniformTerrainCfg(SubTerrainCfg):
   """Heightfield height resolution, in meters per integer unit of the noise array."""
   base_thickness_ratio: float = 1.0
   """Ratio of the heightfield base thickness to its maximum surface height."""
+  min_base_thickness: float = _MIN_HFIELD_BASE_THICKNESS
+  """Minimum heightfield base thickness in meters. The visible surface is
+  unchanged; only the solid base below the surface is thickened for robust
+  contact."""
   border_width: float = 0.0
   """Width of the flat border around the terrain edges, in meters. Must be >=
   horizontal_scale if non-zero."""
@@ -501,7 +524,9 @@ class HfRandomUniformTerrainCfg(SubTerrainCfg):
     )
 
     max_physical_height = elevation_range * self.vertical_scale
-    base_thickness = max_physical_height * self.base_thickness_ratio
+    base_thickness = _base_thickness(
+      max_physical_height, self.base_thickness_ratio, self.min_base_thickness
+    )
 
     if elevation_range > 0:
       normalized_elevation = (noise - elevation_min) / elevation_range
@@ -560,6 +585,10 @@ class HfWaveTerrainCfg(SubTerrainCfg):
   """Heightfield height resolution, in meters per integer unit of the noise array."""
   base_thickness_ratio: float = 0.25
   """Ratio of the heightfield base thickness to its maximum surface height."""
+  min_base_thickness: float = _MIN_HFIELD_BASE_THICKNESS
+  """Minimum heightfield base thickness in meters. The visible surface is
+  unchanged; only the solid base below the surface is thickened for robust
+  contact."""
   border_width: float = 0.0
   """Width of the flat border around the terrain edges, in meters. Must be >=
   horizontal_scale if non-zero."""
@@ -629,7 +658,9 @@ class HfWaveTerrainCfg(SubTerrainCfg):
     )
 
     max_physical_height = elevation_range * self.vertical_scale
-    base_thickness = max_physical_height * self.base_thickness_ratio
+    base_thickness = _base_thickness(
+      max_physical_height, self.base_thickness_ratio, self.min_base_thickness
+    )
 
     if elevation_range > 0:
       normalized_elevation = (noise - elevation_min) / elevation_range
@@ -698,6 +729,10 @@ class HfDiscreteObstaclesTerrainCfg(SubTerrainCfg):
   """Heightfield height resolution, in meters per integer unit of the noise array."""
   base_thickness_ratio: float = 1.0
   """Ratio of the heightfield base thickness to its maximum surface height."""
+  min_base_thickness: float = _MIN_HFIELD_BASE_THICKNESS
+  """Minimum heightfield base thickness in meters. The visible surface is
+  unchanged; only the solid base below the surface is thickened for robust
+  contact."""
   border_width: float = 0.0
   """Width of the flat border around the terrain edges, in meters. Must be >=
   horizontal_scale if non-zero."""
@@ -793,7 +828,9 @@ class HfDiscreteObstaclesTerrainCfg(SubTerrainCfg):
     )
 
     max_physical_height = elevation_range * self.vertical_scale
-    base_thickness = max_physical_height * self.base_thickness_ratio
+    base_thickness = _base_thickness(
+      max_physical_height, self.base_thickness_ratio, self.min_base_thickness
+    )
 
     if elevation_range > 0:
       normalized_elevation = (noise - elevation_min) / elevation_range
@@ -863,6 +900,10 @@ class HfPerlinNoiseTerrainCfg(SubTerrainCfg):
   horizontal_scale: float = 0.1
   resolution: float = 0.05
   base_thickness_ratio: float = 1.0
+  min_base_thickness: float = _MIN_HFIELD_BASE_THICKNESS
+  """Minimum heightfield base thickness in meters. The visible surface is
+  unchanged; only the solid base below the surface is thickened for robust
+  contact."""
   border_width: float = 0.0
 
   def function(
@@ -931,8 +972,8 @@ class HfPerlinNoiseTerrainCfg(SubTerrainCfg):
     # (target_height == 0) the surface is flat; clamp to a small positive height
     # so compilation does not fail with "size parameter is not positive".
     max_physical_height = max(target_height, _MIN_HFIELD_HEIGHT)
-    base_thickness = max(
-      max_physical_height * self.base_thickness_ratio, _MIN_HFIELD_HEIGHT
+    base_thickness = _base_thickness(
+      max_physical_height, self.base_thickness_ratio, self.min_base_thickness
     )
 
     unique_id = uuid.uuid4().hex
