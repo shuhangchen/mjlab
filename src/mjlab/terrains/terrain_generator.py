@@ -169,6 +169,8 @@ class TerrainGenerator:
     self.np_rng = np.random.default_rng(seed)
 
     self.terrain_origins = np.zeros((self.cfg.num_rows, self._num_cols, 3))
+    self.terrain_types = np.empty((self.cfg.num_rows, self._num_cols), dtype=object)
+    self.terrain_types.fill("")
 
     # Pre-allocate flat patch storage by scanning all sub-terrain configs.
     self.flat_patches: dict[str, np.ndarray] = {}
@@ -217,6 +219,7 @@ class TerrainGenerator:
     )
     proportions /= np.sum(proportions)
 
+    sub_terrain_names = list(self.cfg.sub_terrains)
     sub_terrains_cfgs = list(self.cfg.sub_terrains.values())
 
     # Randomly sample and place sub-terrains in the grid.
@@ -244,9 +247,11 @@ class TerrainGenerator:
 
       # Store the spawn origin for this terrain.
       self.terrain_origins[sub_row, sub_col] = spawn_origin
+      self.terrain_types[sub_row, sub_col] = sub_terrain_names[sub_index]
 
   def _generate_curriculum_terrains(self, spec: mujoco.MjSpec) -> None:
     # One column per terrain type — proportion is only for spawning.
+    sub_terrain_names = list(self.cfg.sub_terrains)
     sub_terrains_cfgs = list(self.cfg.sub_terrains.values())
 
     lower, upper = self.cfg.difficulty_range
@@ -264,6 +269,32 @@ class TerrainGenerator:
           sub_col,
         )
         self.terrain_origins[sub_row, sub_col] = spawn_origin
+        self.terrain_types[sub_row, sub_col] = sub_terrain_names[sub_col]
+
+  def grid_metadata(self) -> dict[str, object]:
+    """Return the generated terrain grid layout.
+
+    Tile centers are world-space terrain origins: the tile's x/y center with the
+    terrain-specific z height returned by the sub-terrain generator.
+    """
+    tiles = []
+    for row in range(self.cfg.num_rows):
+      for col in range(self._num_cols):
+        tiles.append(
+          {
+            "row": row,
+            "col": col,
+            "type": str(self.terrain_types[row, col]),
+            "center": [float(v) for v in self.terrain_origins[row, col]],
+          }
+        )
+
+    return {
+      "num_rows": self.cfg.num_rows,
+      "num_cols": self._num_cols,
+      "tile_size": [float(v) for v in self.cfg.size],
+      "tiles": tiles,
+    }
 
   def _get_sub_terrain_position(self, row: int, col: int) -> np.ndarray:
     """Get the world position for a sub-terrain at the given grid indices.

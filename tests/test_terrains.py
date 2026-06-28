@@ -15,10 +15,12 @@ from mjlab.terrains.heightfield_terrains import (
 )
 from mjlab.terrains.primitive_terrains import (
   _MIN_BORDER_HEIGHT,
+  BoxFlatTerrainCfg,
   BoxInvertedPyramidStairsTerrainCfg,
   BoxPyramidStairsTerrainCfg,
   BoxSteppingStonesTerrainCfg,
 )
+from mjlab.terrains.terrain_generator import TerrainGenerator, TerrainGeneratorCfg
 
 _CFG = BoxSteppingStonesTerrainCfg(
   proportion=1.0,
@@ -165,6 +167,69 @@ def test_pyramid_stairs_min_collision_thickness_preserves_top_surfaces(
   )
   expected_tops.append(sign * (num_steps + 1) * step_height)
   np.testing.assert_allclose(actual_tops, sorted(expected_tops), atol=1e-9)
+
+
+@pytest.mark.parametrize(
+  "cfg_cls", [BoxPyramidStairsTerrainCfg, BoxInvertedPyramidStairsTerrainCfg]
+)
+def test_pyramid_stairs_random_step_width_sampled_once_per_patch(cfg_cls):
+  seed = 123
+  step_width_range = (0.25, 0.45)
+  step_width = np.random.default_rng(seed).uniform(*step_width_range)
+  cfg = cfg_cls(
+    size=(8.0, 8.0),
+    step_height_range=(0.16, 0.2),
+    step_width=0.3,
+    step_width_range=step_width_range,
+    platform_width=3.0,
+    border_width=1.0,
+  )
+  terrain_size = cfg.size[0] - 2 * cfg.border_width
+  num_steps = int((terrain_size - cfg.platform_width) / (2 * step_width))
+
+  spec = mujoco.MjSpec()
+  spec.worldbody.add_body(name="terrain")
+  output = cfg.function(
+    difficulty=0.5, spec=spec, rng=np.random.default_rng(seed)
+  )
+
+  geoms = [g.geom for g in output.geometries if g.geom is not None]
+  stair_geoms = geoms[4:-1]
+  assert len(stair_geoms) == 4 * num_steps
+
+  for k in range(num_steps):
+    top, bottom, right, left = stair_geoms[4 * k : 4 * k + 4]
+    np.testing.assert_allclose([top.size[1], bottom.size[1]], step_width / 2)
+    np.testing.assert_allclose([right.size[0], left.size[0]], step_width / 2)
+
+  platform = geoms[-1]
+  platform_width = terrain_size - 2 * num_steps * step_width
+  np.testing.assert_allclose(platform.size[:2], platform_width / 2)
+
+
+def test_terrain_generator_grid_metadata_records_type_and_center():
+  cfg = TerrainGeneratorCfg(
+    size=(2.0, 3.0),
+    num_rows=2,
+    num_cols=3,
+    seed=0,
+    sub_terrains={"flat": BoxFlatTerrainCfg()},
+  )
+  generator = TerrainGenerator(cfg)
+  spec = mujoco.MjSpec()
+  generator.compile(spec)
+
+  metadata = generator.grid_metadata()
+  assert metadata["num_rows"] == 2
+  assert metadata["num_cols"] == 3
+  assert metadata["tile_size"] == [2.0, 3.0]
+  assert len(metadata["tiles"]) == 6
+
+  for tile in metadata["tiles"]:
+    row = tile["row"]
+    col = tile["col"]
+    assert tile["type"] == "flat"
+    np.testing.assert_allclose(tile["center"], generator.terrain_origins[row, col])
 
 
 @pytest.mark.parametrize(

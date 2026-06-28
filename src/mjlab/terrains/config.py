@@ -282,13 +282,21 @@ def tilted_grid(
 ROUGH_TERRAINS_CFG = TerrainGeneratorCfg(
   size=(8.0, 8.0),
   border_width=20.0,
-  num_rows=10,
+  num_rows=20,
   num_cols=20,
   sub_terrains={
-    "flat": flat(proportion=0.2),
-    "pyramid_stairs": pyramid_stairs(proportion=0.2, step_height_range=(0.0, 0.2)),
+    "flat": flat(proportion=0.1),
+    "pyramid_stairs": pyramid_stairs(
+      proportion=0.25,
+      step_height_range=(0.16, 0.2),
+      step_width_range=(0.25, 0.35),
+      platform_width=2.0,
+    ),
     "pyramid_stairs_inv": pyramid_stairs_inv(
-      proportion=0.2, step_height_range=(0.0, 0.2)
+      proportion=0.25,
+      step_height_range=(0.16, 0.2),
+      step_width_range=(0.25, 0.35),
+      platform_width=2.0,
     ),
     "hf_pyramid_slope": hf_pyramid_slope(proportion=0.1, slope_range=(0.0, 1.0)),
     "hf_pyramid_slope_inv": hf_pyramid_slope_inv(

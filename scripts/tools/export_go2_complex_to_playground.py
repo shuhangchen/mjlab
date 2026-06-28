@@ -33,6 +33,7 @@ from mjlab.utils.spec import export_spec
 DEFAULT_TERRAIN_CFG = "mjlab.terrains.config:ROUGH_TERRAINS_CFG"
 GO2_XML_DIR = Path("mujoco_playground/_src/locomotion/go2/xmls")
 COMPLEX_XML = "scene_mjx_fullcollisions_complex_terrain.xml"
+COMPLEX_GRID_METADATA = "scene_mjx_fullcollisions_complex_terrain_grid.json"
 STAIR_XML = "scene_mjx_fullcollisions_stair_terrain.xml"
 GO2_MESH_DIR = Path(
   "mujoco_playground/external_deps/mujoco_menagerie/unitree_go2/assets"
@@ -137,15 +138,22 @@ def _load_terrain_cfg(ref: str, seed: int | None) -> TerrainGeneratorCfg:
   return cfg
 
 
-def _generate_terrain_xml(cfg: TerrainGeneratorCfg, output_dir: Path) -> Path:
+def _generate_terrain_xml(
+  cfg: TerrainGeneratorCfg, output_dir: Path
+) -> tuple[Path, dict[str, object]]:
   _fresh_dir(output_dir)
   spec = mujoco.MjSpec()
-  TerrainGenerator(cfg).compile(spec)
+  generator = TerrainGenerator(cfg)
+  generator.compile(spec)
   export_spec(spec, output_dir)
   terrain_xml = output_dir / "scene.xml"
   if not terrain_xml.exists():
     raise FileNotFoundError(f"Terrain export did not produce {terrain_xml}")
-  return terrain_xml
+  return terrain_xml, generator.grid_metadata()
+
+
+def _write_grid_metadata(path: Path, metadata: dict[str, object]) -> None:
+  path.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n")
 
 
 def _normalize_generated_hfield_assets(terrain_xml: Path, prefix: str) -> None:
@@ -283,6 +291,9 @@ def _backup_current_scene(target_xml: Path, assets_dir: Path, backup_dir: Path) 
   backup_assets_dir.mkdir()
 
   shutil.copy2(target_xml, backup_dir / target_xml.name)
+  target_metadata = target_xml.with_name(COMPLEX_GRID_METADATA)
+  if target_metadata.exists():
+    shutil.copy2(target_metadata, backup_dir / target_metadata.name)
   for texture in sorted(assets_dir.glob(f"{GENERATED_TEXTURE_PREFIX}*.png")):
     shutil.copy2(texture, backup_assets_dir / texture.name)
 
@@ -535,6 +546,7 @@ def export_go2_complex_to_playground(cfg: ExportGo2ComplexCfg) -> dict[str, Any]
   playground_root = _resolve(cfg.playground_root)
   go2_xml_dir = playground_root / GO2_XML_DIR
   target_xml = go2_xml_dir / COMPLEX_XML
+  target_metadata = go2_xml_dir / COMPLEX_GRID_METADATA
   stair_xml = go2_xml_dir / STAIR_XML
   assets_dir = go2_xml_dir / "assets"
   mesh_dir = playground_root / GO2_MESH_DIR
@@ -549,7 +561,7 @@ def export_go2_complex_to_playground(cfg: ExportGo2ComplexCfg) -> dict[str, Any]
     else Path(tempfile.gettempdir()) / f"mjlab_go2_complex_export_{_timestamp()}"
   )
   terrain_dir = stage_dir / "terrain"
-  terrain_xml = _generate_terrain_xml(
+  terrain_xml, grid_metadata = _generate_terrain_xml(
     _load_terrain_cfg(cfg.terrain_cfg, cfg.seed), terrain_dir
   )
   _normalize_generated_hfield_assets(terrain_xml, cfg.asset_name_prefix)
@@ -557,12 +569,14 @@ def export_go2_complex_to_playground(cfg: ExportGo2ComplexCfg) -> dict[str, Any]
   candidate_dir = stage_dir / "playground"
   candidate_assets_dir = candidate_dir / "assets"
   candidate_xml = candidate_dir / COMPLEX_XML
+  candidate_metadata = candidate_dir / COMPLEX_GRID_METADATA
   _fresh_dir(candidate_dir)
   shutil.copytree(assets_dir, candidate_assets_dir)
   _remove_stale_generated_textures(candidate_assets_dir)
   _copy_support_xmls(go2_xml_dir, candidate_dir)
   _patch_robot_meshdirs(candidate_dir, mesh_dir)
   _compose_playground_xml(target_xml, terrain_xml, candidate_xml, cfg)
+  _write_grid_metadata(candidate_metadata, grid_metadata)
   copied_assets = _copy_generated_assets(terrain_dir, candidate_assets_dir)
 
   validation = None
@@ -573,6 +587,7 @@ def export_go2_complex_to_playground(cfg: ExportGo2ComplexCfg) -> dict[str, Any]
   backup_dir = None
   applied_asset_count = 0
   output_xml = candidate_xml
+  output_metadata = candidate_metadata
   if not cfg.dry_run:
     if cfg.backup:
       backup_dir = _resolve(
@@ -584,8 +599,10 @@ def export_go2_complex_to_playground(cfg: ExportGo2ComplexCfg) -> dict[str, Any]
 
     _remove_stale_generated_textures(assets_dir)
     shutil.copy2(candidate_xml, target_xml)
+    shutil.copy2(candidate_metadata, target_metadata)
     applied_asset_count = len(_copy_generated_assets(terrain_dir, assets_dir))
     output_xml = target_xml
+    output_metadata = target_metadata
 
     if cfg.validate:
       validation_stair_xml = stair_xml
@@ -601,7 +618,11 @@ def export_go2_complex_to_playground(cfg: ExportGo2ComplexCfg) -> dict[str, Any]
     "playground_root": str(playground_root),
     "target_xml": str(target_xml),
     "output_xml": str(output_xml),
+    "output_grid_metadata": str(output_metadata),
     "candidate_xml": str(candidate_xml) if candidate_xml.exists() else None,
+    "candidate_grid_metadata": (
+      str(candidate_metadata) if candidate_metadata.exists() else None
+    ),
     "stage_dir": stage_dir_result if stage_dir.exists() else None,
     "terrain_xml": terrain_xml_result if terrain_xml.exists() else None,
     "copied_asset_count": len(copied_assets),

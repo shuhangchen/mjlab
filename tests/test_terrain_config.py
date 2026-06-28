@@ -34,7 +34,7 @@ def test_preset_overrides():
 
 def test_rough_terrains_cfg_structure():
   assert ROUGH_TERRAINS_CFG.size == (8.0, 8.0)
-  assert ROUGH_TERRAINS_CFG.num_rows == 10
+  assert ROUGH_TERRAINS_CFG.num_rows == 20
   assert ROUGH_TERRAINS_CFG.num_cols == 20
   assert len(ROUGH_TERRAINS_CFG.sub_terrains) == 7
   total = sum(c.proportion for c in ROUGH_TERRAINS_CFG.sub_terrains.values())
