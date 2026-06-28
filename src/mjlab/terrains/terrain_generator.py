@@ -171,6 +171,7 @@ class TerrainGenerator:
     self.terrain_origins = np.zeros((self.cfg.num_rows, self._num_cols, 3))
     self.terrain_types = np.empty((self.cfg.num_rows, self._num_cols), dtype=object)
     self.terrain_types.fill("")
+    self.terrain_difficulties = np.zeros((self.cfg.num_rows, self._num_cols))
 
     # Pre-allocate flat patch storage by scanning all sub-terrain configs.
     self.flat_patches: dict[str, np.ndarray] = {}
@@ -248,6 +249,7 @@ class TerrainGenerator:
       # Store the spawn origin for this terrain.
       self.terrain_origins[sub_row, sub_col] = spawn_origin
       self.terrain_types[sub_row, sub_col] = sub_terrain_names[sub_index]
+      self.terrain_difficulties[sub_row, sub_col] = difficulty
 
   def _generate_curriculum_terrains(self, spec: mujoco.MjSpec) -> None:
     # One column per terrain type — proportion is only for spawning.
@@ -270,6 +272,24 @@ class TerrainGenerator:
         )
         self.terrain_origins[sub_row, sub_col] = spawn_origin
         self.terrain_types[sub_row, sub_col] = sub_terrain_names[sub_col]
+        self.terrain_difficulties[sub_row, sub_col] = difficulty
+
+  def _difficulty_score(self, difficulty: float) -> float:
+    lower, upper = self.cfg.difficulty_range
+    if upper == lower:
+      return 0.0
+    score = float(np.clip((difficulty - lower) / (upper - lower), 0.0, 1.0))
+    return round(score, 12)
+
+  @staticmethod
+  def _difficulty_level(score: float) -> str:
+    if score < 0.25:
+      return "easy"
+    if score < 0.50:
+      return "medium"
+    if score < 0.75:
+      return "hard"
+    return "extreme"
 
   def grid_metadata(self) -> dict[str, object]:
     """Return the generated terrain grid layout.
@@ -280,12 +300,17 @@ class TerrainGenerator:
     tiles = []
     for row in range(self.cfg.num_rows):
       for col in range(self._num_cols):
+        difficulty = float(self.terrain_difficulties[row, col])
+        difficulty_score = self._difficulty_score(difficulty)
         tiles.append(
           {
             "row": row,
             "col": col,
             "type": str(self.terrain_types[row, col]),
             "center": [float(v) for v in self.terrain_origins[row, col]],
+            "difficulty": difficulty,
+            "difficulty_score": difficulty_score,
+            "difficulty_level": self._difficulty_level(difficulty_score),
           }
         )
 

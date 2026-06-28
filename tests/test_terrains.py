@@ -207,7 +207,7 @@ def test_pyramid_stairs_random_step_width_sampled_once_per_patch(cfg_cls):
   np.testing.assert_allclose(platform.size[:2], platform_width / 2)
 
 
-def test_terrain_generator_grid_metadata_records_type_and_center():
+def test_terrain_generator_grid_metadata_records_type_center_and_difficulty():
   cfg = TerrainGeneratorCfg(
     size=(2.0, 3.0),
     num_rows=2,
@@ -230,6 +230,36 @@ def test_terrain_generator_grid_metadata_records_type_and_center():
     col = tile["col"]
     assert tile["type"] == "flat"
     np.testing.assert_allclose(tile["center"], generator.terrain_origins[row, col])
+    assert tile["difficulty"] == generator.terrain_difficulties[row, col]
+    assert 0.0 <= tile["difficulty_score"] <= 1.0
+    assert tile["difficulty_level"] in ("easy", "medium", "hard", "extreme")
+
+
+def test_terrain_generator_curriculum_metadata_records_row_difficulty():
+  cfg = TerrainGeneratorCfg(
+    curriculum=True,
+    size=(2.0, 2.0),
+    num_rows=3,
+    num_cols=99,
+    difficulty_range=(0.2, 0.8),
+    seed=0,
+    sub_terrains={"flat": BoxFlatTerrainCfg()},
+  )
+  generator = TerrainGenerator(cfg)
+  spec = mujoco.MjSpec()
+  generator.compile(spec)
+
+  tiles_by_row = {tile["row"]: tile for tile in generator.grid_metadata()["tiles"]}
+
+  assert tiles_by_row[0]["difficulty"] == 0.2
+  assert tiles_by_row[0]["difficulty_score"] == 0.0
+  assert tiles_by_row[0]["difficulty_level"] == "easy"
+  assert tiles_by_row[1]["difficulty"] == 0.5
+  assert tiles_by_row[1]["difficulty_score"] == pytest.approx(0.5)
+  assert tiles_by_row[1]["difficulty_level"] == "hard"
+  assert tiles_by_row[2]["difficulty"] == 0.8
+  assert tiles_by_row[2]["difficulty_score"] == 1.0
+  assert tiles_by_row[2]["difficulty_level"] == "extreme"
 
 
 @pytest.mark.parametrize(
