@@ -33,12 +33,21 @@ def test_preset_overrides():
 
 
 def test_rough_terrains_cfg_structure():
+  assert ROUGH_TERRAINS_CFG.seed == 0
   assert ROUGH_TERRAINS_CFG.size == (8.0, 8.0)
   assert ROUGH_TERRAINS_CFG.num_rows == 20
   assert ROUGH_TERRAINS_CFG.num_cols == 20
   assert len(ROUGH_TERRAINS_CFG.sub_terrains) == 7
   total = sum(c.proportion for c in ROUGH_TERRAINS_CFG.sub_terrains.values())
   assert abs(total - 1.0) < 1e-6
+  assert ROUGH_TERRAINS_CFG.sub_terrains["pyramid_stairs"].step_height_range == (
+    0.0,
+    0.18,
+  )
+  assert ROUGH_TERRAINS_CFG.sub_terrains["pyramid_stairs_inv"].step_height_range == (
+    0.0,
+    0.18,
+  )
 
 
 def test_stairs_terrains_cfg_structure():
