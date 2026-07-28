@@ -355,8 +355,8 @@ STAIRS_TERRAINS_CFG = TerrainGeneratorCfg(
 #    stair skill forms on.
 #  - random_rough gets scale_with_difficulty=True: the preset default False
 #    made every rough tile identical and its recorded difficulty meaningless.
-# V2 keeps v1's terrain TYPES (stair distribution is the single variable);
-# V3 converts generic filler into structured outdoor obstacles.
+# V2 keeps v1's terrain TYPES, so the stair distribution is the single
+# variable; V3 converts generic filler into structured outdoor obstacles.
 
 _STAIRS_RAMP = dict(
   step_height_range=(0.0, 0.14),
@@ -369,7 +369,7 @@ _STAIRS_DEPLOY = dict(
   platform_width=2.0,
 )
 
-GO2_OUTDOOR_V2_CFG = TerrainGeneratorCfg(
+ROUGH_TERRAINS_V2_CFG = TerrainGeneratorCfg(
   seed=0,
   size=(8.0, 8.0),
   border_width=20.0,
@@ -398,7 +398,7 @@ GO2_OUTDOOR_V2_CFG = TerrainGeneratorCfg(
 # V3 = V2 stair/slope exposure held EXACTLY constant; the generic filler
 # (rough 12->8, wave 10->6, flat 18->6) becomes structured outdoor terrain, so
 # an 18A(v2) -> 18B(v3) comparison is single-variable.
-GO2_OUTDOOR_V3_CFG = TerrainGeneratorCfg(
+ROUGH_TERRAINS_V3_CFG = TerrainGeneratorCfg(
   seed=0,
   size=(8.0, 8.0),
   border_width=20.0,
