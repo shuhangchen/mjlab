@@ -340,6 +340,93 @@ STAIRS_TERRAINS_CFG = TerrainGeneratorCfg(
   add_lights=True,
 )
 
+# Go2 deployment-oriented terrain (2026-07-27). Goals: (1) robust outdoor
+# locomotion, (2) reliable real staircases. Design notes:
+#  - Stair riser mass is concentrated in the DEPLOYMENT BAND (14-20 cm) instead
+#    of uniform 0-18 cm: with a uniform draw most stair tiles are ~10 cm toys,
+#    while real stairs cap at 17.8 cm (US IBC commercial) / 19.7 cm (IRC
+#    residential). ~68% of stair tiles now land in that band vs ~30% before.
+#  - Deployment-band stairs also get TIGHT treads (24-28 cm; IRC minimum is
+#    25.4 cm, worn/nonconforming flights go lower). Tall riser x tight tread is
+#    the real-world hard corner and previously occurred only by coincidence of
+#    two independent draws (v1 treads were 25-35 cm at every riser height).
+#  - Ramp entries (0-14 cm, generous treads) stay in the mix: with
+#    curriculum=False every tile is seen from step 0, so easy stairs are what
+#    stair skill forms on.
+#  - random_rough gets scale_with_difficulty=True: the preset default False
+#    made every rough tile identical and its recorded difficulty meaningless.
+# V2 keeps v1's terrain TYPES (stair distribution is the single variable);
+# V3 converts generic filler into structured outdoor obstacles.
+
+_STAIRS_RAMP = dict(
+  step_height_range=(0.0, 0.14),
+  step_width_range=(0.28, 0.35),
+  platform_width=2.0,
+)
+_STAIRS_DEPLOY = dict(
+  step_height_range=(0.14, 0.20),
+  step_width_range=(0.24, 0.28),
+  platform_width=2.0,
+)
+
+GO2_OUTDOOR_V2_CFG = TerrainGeneratorCfg(
+  seed=0,
+  size=(8.0, 8.0),
+  border_width=20.0,
+  num_rows=20,
+  num_cols=20,
+  sub_terrains={
+    "flat": flat(proportion=0.18),
+    "pyramid_stairs_ramp": pyramid_stairs(proportion=0.07, **_STAIRS_RAMP),
+    "pyramid_stairs_deploy": pyramid_stairs(proportion=0.15, **_STAIRS_DEPLOY),
+    "pyramid_stairs_inv_ramp": pyramid_stairs_inv(
+      proportion=0.07, **_STAIRS_RAMP
+    ),
+    "pyramid_stairs_inv_deploy": pyramid_stairs_inv(
+      proportion=0.15, **_STAIRS_DEPLOY
+    ),
+    "hf_pyramid_slope": hf_pyramid_slope(proportion=0.08, slope_range=(0.0, 1.0)),
+    "hf_pyramid_slope_inv": hf_pyramid_slope_inv(
+      proportion=0.08, slope_range=(0.0, 1.0)
+    ),
+    "random_rough": random_rough(proportion=0.12, scale_with_difficulty=True),
+    "wave_terrain": wave_terrain(proportion=0.10),
+  },
+  add_lights=True,
+)
+
+# V3 = V2 stair/slope exposure held EXACTLY constant; the generic filler
+# (rough 12->8, wave 10->6, flat 18->6) becomes structured outdoor terrain, so
+# an 18A(v2) -> 18B(v3) comparison is single-variable.
+GO2_OUTDOOR_V3_CFG = TerrainGeneratorCfg(
+  seed=0,
+  size=(8.0, 8.0),
+  border_width=20.0,
+  num_rows=20,
+  num_cols=20,
+  sub_terrains={
+    "flat": flat(proportion=0.06),
+    "pyramid_stairs_ramp": pyramid_stairs(proportion=0.07, **_STAIRS_RAMP),
+    "pyramid_stairs_deploy": pyramid_stairs(proportion=0.15, **_STAIRS_DEPLOY),
+    "pyramid_stairs_inv_ramp": pyramid_stairs_inv(
+      proportion=0.07, **_STAIRS_RAMP
+    ),
+    "pyramid_stairs_inv_deploy": pyramid_stairs_inv(
+      proportion=0.15, **_STAIRS_DEPLOY
+    ),
+    "hf_pyramid_slope": hf_pyramid_slope(proportion=0.08, slope_range=(0.0, 1.0)),
+    "hf_pyramid_slope_inv": hf_pyramid_slope_inv(
+      proportion=0.08, slope_range=(0.0, 1.0)
+    ),
+    "random_rough": random_rough(proportion=0.08, scale_with_difficulty=True),
+    "wave_terrain": wave_terrain(proportion=0.06),
+    "discrete_obstacles": discrete_obstacles(proportion=0.08),
+    "random_spread_boxes": random_spread_boxes(proportion=0.06),
+    "perlin_noise": perlin_noise(proportion=0.06),
+  },
+  add_lights=True,
+)
+
 ALL_TERRAINS_CFG = TerrainGeneratorCfg(
   size=(8.0, 8.0),
   border_width=20.0,
