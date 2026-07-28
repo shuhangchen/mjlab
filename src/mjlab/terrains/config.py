@@ -421,7 +421,12 @@ ROUGH_TERRAINS_V3_CFG = TerrainGeneratorCfg(
     "random_rough": random_rough(proportion=0.08, scale_with_difficulty=True),
     "wave_terrain": wave_terrain(proportion=0.06),
     "discrete_obstacles": discrete_obstacles(proportion=0.08),
-    "random_spread_boxes": random_spread_boxes(proportion=0.06),
+    # min_box_height: MJX box collision needs >= 0.1 m thickness and the
+    # playground exporter rejects thinner terrain (588 offending boxes at
+    # 1.5 cm on the first v3 attempt).
+    "random_spread_boxes": random_spread_boxes(
+      proportion=0.06, min_box_height=0.10
+    ),
     "perlin_noise": perlin_noise(proportion=0.06),
   },
   add_lights=True,

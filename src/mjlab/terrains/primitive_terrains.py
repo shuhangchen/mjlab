@@ -750,6 +750,14 @@ class BoxRandomSpreadTerrainCfg(SubTerrainCfg):
   box_width_range: tuple[float, float] = (0.3, 1.0)
   box_length_range: tuple[float, float] = (0.3, 1.0)
   box_height_range: tuple[float, float] = (0.05, 1.0)
+  min_box_height: float = 0.0
+  """Floor on the difficulty-scaled box height (m).
+
+  Heights are scaled by (0.2 + 0.8 * difficulty), so low-difficulty patches
+  otherwise emit centimetre-thin slabs: MJX/Warp box collision is unreliable
+  below ~0.1 m, and the mujoco_playground exporter rejects such terrain
+  outright. 0.0 keeps the original behaviour.
+  """
   box_yaw_range: tuple[float, float] = (0.0, 360.0)
   add_floor: bool = True
   platform_width: float = 1.0
@@ -814,8 +822,8 @@ class BoxRandomSpreadTerrainCfg(SubTerrainCfg):
       size_y = rng.uniform(*self.box_length_range)
       height = rng.uniform(*self.box_height_range)
 
-      # Scale height by difficulty.
-      height = height * (0.2 + 0.8 * difficulty)
+      # Scale height by difficulty, then apply the collision-thickness floor.
+      height = max(height * (0.2 + 0.8 * difficulty), self.min_box_height)
 
       # Random position within inner area.
       pos_x = rng.uniform(
