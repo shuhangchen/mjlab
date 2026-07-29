@@ -427,7 +427,15 @@ ROUGH_TERRAINS_V3_CFG = TerrainGeneratorCfg(
     "random_spread_boxes": random_spread_boxes(
       proportion=0.06, min_box_height=0.10
     ),
-    "perlin_noise": perlin_noise(proportion=0.06),
+    # resolution 0.1 (not the 0.05 preset default): at 0.05 an 8 m tile
+    # becomes a 160x160 heightfield whose 5 cm cells put more than MuJoCo's
+    # 50-contacts-per-geom-pair hfield cap under a single robot geom, so
+    # contacts are silently DROPPED - run 18B logged 19.9M overflow warnings
+    # across its whole training. 0.1 matches every other hfield type (80x80)
+    # and, since effective feature scale = scale * resolution/horizontal_scale,
+    # also stretches features from ~0.25 m to ~1 m wavelength: rolling natural
+    # ground rather than fine moguls (which random_rough already covers).
+    "perlin_noise": perlin_noise(proportion=0.06, resolution=0.1),
   },
   add_lights=True,
 )
