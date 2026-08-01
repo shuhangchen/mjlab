@@ -95,8 +95,17 @@ class ExportGo2ComplexCfg:
   terrain_condim: int = 3
   """MuJoCo condim assigned to generated terrain geoms."""
 
-  terrain_priority: int = 2
-  """MuJoCo priority assigned to generated terrain geoms."""
+  terrain_priority: int = 0
+  """MuJoCo priority assigned to generated terrain geoms.
+
+  0 = mjlab-native contact semantics: the robot's FEET (priority 1) own the
+  foot-terrain contact params (mu 0.6, foot solimp), and body-terrain
+  contacts stay frictional via the equal-priority max-condim rule. The
+  previous value (2) made terrain outrank the feet, silently pinning every
+  foot contact at the terrain's default mu=1.0 and making foot-side
+  friction randomization physics-dead (discovered 2026-08-01, playground
+  run 18I). Do not raise above the feet's priority.
+  """
 
   asset_name_prefix: str = "go2_complex"
   """Stable suffix prefix for normalized generated hfield assets."""
