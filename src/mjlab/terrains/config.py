@@ -340,31 +340,27 @@ STAIRS_TERRAINS_CFG = TerrainGeneratorCfg(
   add_lights=True,
 )
 
-# Go2 deployment-oriented terrain (2026-07-27). Goals: (1) robust outdoor
-# locomotion, (2) reliable real staircases. Design notes:
-#  - Stair riser mass is concentrated in the DEPLOYMENT BAND (14-20 cm) instead
-#    of uniform 0-18 cm: with a uniform draw most stair tiles are ~10 cm toys,
-#    while real stairs cap at 17.8 cm (US IBC commercial) / 19.7 cm (IRC
-#    residential). ~68% of stair tiles now land in that band vs ~30% before.
-#  - Deployment-band stairs also get TIGHT treads (24-28 cm; IRC minimum is
-#    25.4 cm, worn/nonconforming flights go lower). Tall riser x tight tread is
-#    the real-world hard corner and previously occurred only by coincidence of
-#    two independent draws (v1 treads were 25-35 cm at every riser height).
-#  - Ramp entries (0-14 cm, generous treads) stay in the mix: with
-#    curriculum=False every tile is seen from step 0, so easy stairs are what
-#    stair skill forms on.
-#  - random_rough gets scale_with_difficulty=True: the preset default False
-#    made every rough tile identical and its recorded difficulty meaningless.
-# V2 keeps v1's terrain TYPES, so the stair distribution is the single
-# variable; V3 converts generic filler into structured outdoor obstacles.
+# Go2 deployment-oriented terrain. Goals: (1) robust outdoor locomotion and
+# (2) reliable traversal of real staircases with risers around 20 cm.
+#
+# Stair geometry is split into two contiguous bands:
+#  - Ramp stairs use 8-16 cm risers and generous 28-35 cm treads. This removes
+#    nearly-flat stair patches while retaining an easier skill-formation band.
+#  - Deployment stairs use 16-22 cm risers and tight 24-28 cm treads. The band
+#    includes the 20 cm deployment target while retaining overlap with the ramp
+#    boundary at 16 cm.
+# Both bands have equal normal and inverted proportions for descending-first
+# and ascending-first starts. curriculum=False samples every difficulty from
+# the beginning. random_rough scales with difficulty so its recorded difficulty
+# corresponds to actual geometric severity.
 
 _STAIRS_RAMP = dict(
-  step_height_range=(0.0, 0.14),
+  step_height_range=(0.08, 0.16),
   step_width_range=(0.28, 0.35),
   platform_width=2.0,
 )
 _STAIRS_DEPLOY = dict(
-  step_height_range=(0.14, 0.20),
+  step_height_range=(0.16, 0.22),
   step_width_range=(0.24, 0.28),
   platform_width=2.0,
 )
@@ -379,12 +375,8 @@ ROUGH_TERRAINS_V2_CFG = TerrainGeneratorCfg(
     "flat": flat(proportion=0.18),
     "pyramid_stairs_ramp": pyramid_stairs(proportion=0.07, **_STAIRS_RAMP),
     "pyramid_stairs_deploy": pyramid_stairs(proportion=0.15, **_STAIRS_DEPLOY),
-    "pyramid_stairs_inv_ramp": pyramid_stairs_inv(
-      proportion=0.07, **_STAIRS_RAMP
-    ),
-    "pyramid_stairs_inv_deploy": pyramid_stairs_inv(
-      proportion=0.15, **_STAIRS_DEPLOY
-    ),
+    "pyramid_stairs_inv_ramp": pyramid_stairs_inv(proportion=0.07, **_STAIRS_RAMP),
+    "pyramid_stairs_inv_deploy": pyramid_stairs_inv(proportion=0.15, **_STAIRS_DEPLOY),
     "hf_pyramid_slope": hf_pyramid_slope(proportion=0.08, slope_range=(0.0, 1.0)),
     "hf_pyramid_slope_inv": hf_pyramid_slope_inv(
       proportion=0.08, slope_range=(0.0, 1.0)
@@ -395,9 +387,10 @@ ROUGH_TERRAINS_V2_CFG = TerrainGeneratorCfg(
   add_lights=True,
 )
 
-# V3 = V2 stair/slope exposure held EXACTLY constant; the generic filler
-# (rough 12->8, wave 10->6, flat 18->6) becomes structured outdoor terrain, so
-# an 18A(v2) -> 18B(v3) comparison is single-variable.
+# V3 allocates 42% to stairs, 16% to box obstacles, and 36% to slopes, rough
+# ground, discrete obstacles, and Perlin ground. Explicit flat and wave terrain
+# together occupy 6%. The proportions sum to 1.0; seed 0 determines the exact
+# spatial realization of the 20x20 random grid.
 ROUGH_TERRAINS_V3_CFG = TerrainGeneratorCfg(
   seed=0,
   size=(8.0, 8.0),
@@ -405,28 +398,22 @@ ROUGH_TERRAINS_V3_CFG = TerrainGeneratorCfg(
   num_rows=20,
   num_cols=20,
   sub_terrains={
-    "flat": flat(proportion=0.06),
-    "pyramid_stairs_ramp": pyramid_stairs(proportion=0.07, **_STAIRS_RAMP),
+    "flat": flat(proportion=0.04),
+    "pyramid_stairs_ramp": pyramid_stairs(proportion=0.06, **_STAIRS_RAMP),
     "pyramid_stairs_deploy": pyramid_stairs(proportion=0.15, **_STAIRS_DEPLOY),
-    "pyramid_stairs_inv_ramp": pyramid_stairs_inv(
-      proportion=0.07, **_STAIRS_RAMP
-    ),
-    "pyramid_stairs_inv_deploy": pyramid_stairs_inv(
-      proportion=0.15, **_STAIRS_DEPLOY
-    ),
-    "hf_pyramid_slope": hf_pyramid_slope(proportion=0.08, slope_range=(0.0, 1.0)),
+    "pyramid_stairs_inv_ramp": pyramid_stairs_inv(proportion=0.06, **_STAIRS_RAMP),
+    "pyramid_stairs_inv_deploy": pyramid_stairs_inv(proportion=0.15, **_STAIRS_DEPLOY),
+    "hf_pyramid_slope": hf_pyramid_slope(proportion=0.05, slope_range=(0.0, 0.7)),
     "hf_pyramid_slope_inv": hf_pyramid_slope_inv(
-      proportion=0.08, slope_range=(0.0, 1.0)
+      proportion=0.05, slope_range=(0.0, 0.7)
     ),
     "random_rough": random_rough(proportion=0.08, scale_with_difficulty=True),
-    "wave_terrain": wave_terrain(proportion=0.06),
+    "wave_terrain": wave_terrain(proportion=0.02),
     "discrete_obstacles": discrete_obstacles(proportion=0.08),
     # min_box_height: MJX box collision needs >= 0.1 m thickness and the
     # playground exporter rejects thinner terrain (588 offending boxes at
     # 1.5 cm on the first v3 attempt).
-    "random_spread_boxes": random_spread_boxes(
-      proportion=0.06, min_box_height=0.10
-    ),
+    "random_spread_boxes": random_spread_boxes(proportion=0.10, min_box_height=0.10),
     # resolution 0.1 (not the 0.05 preset default): at 0.05 an 8 m tile
     # becomes a 160x160 heightfield whose 5 cm cells put more than MuJoCo's
     # 50-contacts-per-geom-pair hfield cap under a single robot geom, so
@@ -435,7 +422,14 @@ ROUGH_TERRAINS_V3_CFG = TerrainGeneratorCfg(
     # and, since effective feature scale = scale * resolution/horizontal_scale,
     # also stretches features from ~0.25 m to ~1 m wavelength: rolling natural
     # ground rather than fine moguls (which random_rough already covers).
-    "perlin_noise": perlin_noise(proportion=0.06, resolution=0.1),
+    "perlin_noise": perlin_noise(proportion=0.10, resolution=0.1),
+    "box_random_grid": box_random_grid(
+      proportion=0.06,
+      grid_width=0.6,
+      grid_height_range=(0.04, 0.12),
+      platform_width=1.0,
+      merge_similar_heights=True,
+    ),
   },
   add_lights=True,
 )
